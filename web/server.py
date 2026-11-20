@@ -20,6 +20,7 @@ ASSETS = {
     "/": ("index.html", "text/html"),
     "/favicon.png": ("public/favicon.png", "image/png"),
     "/src/main.js": ("src/main.js", "text/javascript"),
+    "/src/pcm.js": ("src/pcm.js", "text/javascript"),
     "/src/style.css": ("src/style.css", "text/css"),
 }
 
@@ -30,6 +31,19 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 opener = build_opener(NoRedirect)
+
+
+def sse_data(response):
+    data = []
+    for raw in response:
+        line = raw.rstrip(b"\r\n")
+        if line.startswith(b"data:"):
+            data.append(line[5:].lstrip())
+        elif not line and data:
+            yield b"\n".join(data)
+            data.clear()
+    if data:
+        yield b"\n".join(data)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -99,57 +113,66 @@ class Handler(BaseHTTPRequestHandler):
             messages.insert(0, {"role": "user", "content": instruction})
         return {"model": model, "messages": messages, "audio": audio, "stream": stream}
 
-    def call_mimo(self, key, payload):
+    def open_mimo(self, key, payload):
         request = Request(
             MIMO_URL,
             data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json", "api-key": key},
+            headers={
+                "Content-Type": "application/json",
+                "api-key": key,
+                "Accept": "text/event-stream" if payload["stream"] else "application/json",
+            },
             method="POST",
         )
-        with opener.open(request, timeout=60) as response:
-            result = json.load(response)
-        audio = base64.b64decode(result["choices"][0]["message"]["audio"]["data"], validate=True)
-        if audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
-            raise ValueError
-        return audio
+        return opener.open(request, timeout=60)
 
-    def stream_mimo(self, key, payload):
-        request = Request(
-            MIMO_URL,
-            data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json", "api-key": key, "Accept": "text/event-stream"},
-            method="POST",
-        )
-        with opener.open(request, timeout=60) as response:
-            self.send_response(200)
-            self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
-            self.send_header("Cache-Control", "no-cache, no-transform")
-            self.send_header("Connection", "close")
-            self.end_headers()
+    def write_frame(self, **frame):
+        self.wfile.write(json.dumps(frame).encode() + b"\n")
+        self.wfile.flush()
+
+    def stream_mimo(self, response):
+        if response.headers.get_content_type() != "text/event-stream":
+            self.error(502, "小米 MiMo 没有返回音频流。")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        received_audio = False
+        try:
+            for message in sse_data(response):
+                if message.strip() == b"[DONE]":
+                    break
+                event = json.loads(message)
+                choice = next(iter(event.get("choices") or []), {})
+                finish = choice.get("finish_reason")
+                if event.get("error") or (finish and finish != "stop"):
+                    raise ValueError("小米 MiMo 未完成音频合成，请重试。")
+                encoded = ((choice.get("delta") or {}).get("audio") or {}).get("data")
+                if isinstance(encoded, str) and encoded:
+                    self.write_frame(data=encoded)
+                    received_audio = True
+                if finish == "stop":
+                    break
+            else:
+                raise ValueError("小米 MiMo 音频流提前结束，请重试。")
+            if not received_audio:
+                raise ValueError("小米 MiMo 没有返回音频数据。")
+            self.write_frame(done=True)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except (ValueError, TypeError, AttributeError, OSError) as error:
+            if isinstance(error, (TimeoutError, socket.timeout)):
+                message = "小米 MiMo 请求超时，请重试。"
+            elif type(error) is ValueError:
+                message = str(error)
+            else:
+                message = "小米 MiMo 音频响应失败，请稍后重试。"
             try:
-                while True:
-                    line = response.readline()
-                    if not line:
-                        break
-                    if not line.startswith(b"data:"):
-                        continue
-                    value = line[5:].strip()
-                    if value == b"[DONE]":
-                        self.wfile.write(b'{"done":true}\n')
-                        self.wfile.flush()
-                        break
-                    try:
-                        chunk = json.loads(value)
-                        audio = chunk.get("choices", [{}])[0].get("delta", {}).get("audio")
-                        encoded = audio.get("data") if audio else None
-                        if encoded:
-                            message = json.dumps({"data": encoded, "done": False}, ensure_ascii=False).encode()
-                            self.wfile.write(message + b"\n")
-                            self.wfile.flush()
-                    except (json.JSONDecodeError, AttributeError, IndexError, TypeError):
-                        continue
-            except (BrokenPipeError, ConnectionResetError):
-                return
+                self.write_frame(error=message)
+            except OSError:
+                pass
 
     def do_POST(self):
         if self.path not in {"/api/tts", "/api/tts/stream", "/api/test"}:
@@ -181,25 +204,15 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as error:
             self.error(400, str(error))
             return
-        if self.path == "/api/tts/stream":
-            try:
-                self.stream_mimo(key, payload)
-            except HTTPError as error:
-                messages = {
-                    401: "小米 MiMo 拒绝了 API Key，请检查模型配置。",
-                    403: "当前 API Key 无权调用小米 MiMo TTS。",
-                    429: "小米 MiMo 请求过于频繁，请稍后再试。",
-                }
-                self.error(error.code if 400 <= error.code <= 599 else 502,
-                           messages.get(error.code, f"小米 MiMo 返回 HTTP {error.code}。"))
-            except (TimeoutError, socket.timeout):
-                self.error(504, "小米 MiMo 请求超时，请重试。")
-            except (URLError, OSError):
-                self.error(502, "无法连接小米 MiMo，请检查网络或代理。")
-            return
-
         try:
-            audio = self.call_mimo(key, payload)
+            with self.open_mimo(key, payload) as response:
+                if payload["stream"]:
+                    self.stream_mimo(response)
+                    return
+                result = json.load(response)
+            audio = base64.b64decode(result["choices"][0]["message"]["audio"]["data"], validate=True)
+            if audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
+                raise ValueError
         except HTTPError as error:
             messages = {
                 401: "小米 MiMo 拒绝了 API Key，请检查模型配置。",

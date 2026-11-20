@@ -70,7 +70,7 @@ async function openMimo(apiKey, payload, signal) {
   })
   if (response.ok) return response
 
-  await response.body?.cancel()
+  await response.body?.cancel().catch(() => {})
   const messages = {
     401: '小米 MiMo 拒绝了 API Key，请检查模型配置。',
     403: '当前 API Key 无权调用小米 MiMo TTS。',
@@ -121,8 +121,11 @@ async function streamMimo(apiKey, payload, res, signal) {
 
     const chunk = JSON.parse(message)
     const choice = chunk?.choices?.[0]
+    if (chunk?.error || (choice?.finish_reason && choice.finish_reason !== 'stop')) {
+      throw Object.assign(new Error('小米 MiMo 未完成音频合成，请重试。'), { status: 502 })
+    }
     const encoded = choice?.delta?.audio?.data
-    if (encoded) {
+    if (typeof encoded === 'string' && encoded) {
       receivedAudio = true
       await send({ data: encoded })
     }
@@ -145,25 +148,33 @@ async function streamMimo(apiKey, payload, res, signal) {
         const line = raw.replace(/\r$/, '')
         if (line.startsWith('data:')) eventLines.push(line.slice(5).trimStart())
         if (line || !eventLines.length) continue
-        if (await handleEvent(eventLines.join('\n').trim())) return
+        if (await handleEvent(eventLines.join('\n').trim())) {
+          res.end()
+          return
+        }
         eventLines = []
       }
     }
     if (pending.trim() && pending.startsWith('data:')) {
       eventLines.push(pending.slice(5).trimStart())
     }
-    if (eventLines.length) await handleEvent(eventLines.join('\n').trim())
+    if (eventLines.length && await handleEvent(eventLines.join('\n').trim())) {
+      res.end()
+      return
+    }
+    throw Object.assign(new Error('小米 MiMo 音频流提前结束，请重试。'), { status: 502 })
   } finally {
     await reader.cancel().catch(() => {})
     reader.releaseLock()
   }
-  if (!receivedAudio) throw Object.assign(new Error('小米 MiMo 音频流提前结束，请重试。'), { status: 502 })
-  if (!res.writableEnded) await send({ done: true })
-  res.end()
 }
 
-export async function handleTts(req, res, test = false, stream = false) {
+export async function handleTts(req, res, { test = false, stream = false } = {}) {
   res.setHeader('Cache-Control', 'no-store')
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST')
+    return res.status(405).json({ error: '只支持 POST。' })
+  }
   const origin = req.headers.origin
   const protocol = req.headers['x-forwarded-proto'] === 'http' ? 'http' : 'https'
   if (origin && origin !== protocol + '://' + req.headers.host) {
