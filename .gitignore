@@ -1,0 +1,6 @@
+.DS_Store
+.idea/
+.playwright-cli/
+__pycache__/
+node_modules/
+*.dylib

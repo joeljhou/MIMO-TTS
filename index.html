@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fdfdfd">
+  <title>MIMO-TTS · 小米 MiMo 语音合成</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="stylesheet" href="/src/style.css">
+  <script type="module" src="/src/main.js"></script>
+</head>
+<body>
+  <main class="app">
+    <section class="editor" aria-label="语音合成">
+      <header class="editor-heading">
+        <h1 class="brand">MIMO-TTS</h1>
+        <div class="tools">
+          <button id="open-style" type="button">朗读风格</button>
+          <button id="open-settings" type="button">模型配置</button>
+        </div>
+      </header>
+      <textarea id="text" aria-label="待合成文本" maxlength="100" spellcheck="false">我很喜欢小米里的一款音色「MIMO」，说话很温柔，像是我的梦中女友。
+那种感觉很奇妙，就像是一见钟情：第一次听到她的声音时，我就非常想要拥有她。</textarea>
+      <div class="text-meta">
+        <span class="credit">MADE WITH ❤️ BY <strong>JOEL JHOU</strong></span>
+        <output id="count" for="text">72/100</output>
+      </div>
+      <div class="actions">
+        <button id="open-voices" type="button" aria-controls="voice-panel" aria-expanded="true">
+          <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29"/><circle cx="22" cy="32" r="2.8" fill="currentColor" stroke="none"/><path d="M29 24a11 11 0 0 1 0 16m7-23a21 21 0 0 1 0 30"/></svg>
+          <span>发音人</span>
+        </button>
+        <button id="play" type="button">
+          <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29"/><path id="play-shape" d="m26 22 18 10-18 10z"/></svg>
+          <span>播放</span>
+        </button>
+        <button id="download" type="button">
+          <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29"/><path d="M32 18v27m-13-13 13 13 13-13"/></svg>
+          <span>下载</span>
+        </button>
+      </div>
+      <p id="status" class="status" role="status"></p>
+      <footer class="panel-label" aria-hidden="true">语音合成</footer>
+    </section>
+    <aside class="voices" id="voice-panel" aria-labelledby="voice-title">
+      <header class="voice-heading">
+        <h2 id="voice-title">发音人列表</h2>
+        <button id="close-voices" class="close-icon" type="button" aria-label="关闭发音人列表"></button>
+      </header>
+      <input id="search" type="search" placeholder="搜索发音人..." aria-label="搜索发音人">
+      <div class="voice-scroll">
+        <div id="voice-list" class="voice-list" role="group" aria-label="可选发音人"></div>
+      </div>
+      <div class="voice-actions">
+        <button id="cancel-voices" type="button">取消</button>
+        <button id="confirm-voices" class="primary" type="button">确定</button>
+      </div>
+      <footer class="panel-label" aria-hidden="true">发音人列表</footer>
+    </aside>
+  </main>
+
+  <dialog id="settings" aria-labelledby="settings-title">
+    <form id="key-form">
+      <div class="dialog-heading">
+        <h2 id="settings-title">模型配置</h2>
+        <button class="close-icon" type="button" data-close aria-label="关闭模型配置"></button>
+      </div>
+      <p class="note">API Key 只保存在当前浏览器，用于调用小米 MiMo。</p>
+      <div class="key-label">
+        <label for="api-key">MIMO_API_KEY</label>
+        <a href="https://platform.xiaomimimo.com/console/api-keys" target="_blank" rel="noopener noreferrer">获取 API Key ↗</a>
+      </div>
+      <input id="api-key" type="password" placeholder="粘贴小米 MiMo API Key" autocomplete="off" spellcheck="false">
+      <div class="field">
+        <label for="model-select">模型</label>
+        <select id="model-select">
+          <option value="mimo-v2.5-tts">mimo-v2.5-tts（默认）</option>
+          <option value="mimo-v2.5-tts-voicedesign">mimo-v2.5-tts-voicedesign</option>
+          <option value="mimo-v2.5-tts-voiceclone">mimo-v2.5-tts-voiceclone</option>
+        </select>
+        <p id="model-hint" class="field-hint"></p>
+      </div>
+      <div id="reference-field" class="field" hidden>
+        <label for="reference-audio">参考音频</label>
+        <input id="reference-audio" type="file" accept=".wav,.mp3,audio/wav,audio/mpeg" aria-describedby="reference-hint">
+        <p id="reference-hint" class="field-hint"></p>
+      </div>
+      <p id="connection-status" class="field-hint" role="status" hidden></p>
+      <div class="dialog-actions">
+        <button id="test-connection" type="button">测试连接</button>
+        <button id="clear-key" type="button">清除本地配置</button>
+        <button class="primary" type="submit">保存并生效</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="style" aria-labelledby="style-title">
+    <form id="style-form">
+      <div class="dialog-heading">
+        <h2 id="style-title">朗读风格</h2>
+        <button class="close-icon" type="button" data-close aria-label="关闭朗读风格"></button>
+      </div>
+      <div id="description-field" hidden>
+        <label for="voice-description">音色描述</label>
+        <textarea id="voice-description" maxlength="300" rows="2" placeholder="例如：年轻女声，声线清亮，像一位深夜电台主播。"></textarea>
+      </div>
+      <label for="style-input">朗读指令</label>
+      <div id="style-presets" class="style-presets" role="group" aria-label="朗读风格预设">
+        <button type="button" data-style="用自然的口语表达，咬字清楚，语速适中。">自然口语</button>
+        <button type="button" data-style="语气温柔，音量轻一些，语速放慢，句间稍作停顿。">温柔舒缓</button>
+        <button type="button" data-style="像新闻主播一样，发音清晰，语气沉稳，节奏匀速。">新闻播报</button>
+        <button type="button" data-style="像分享好消息一样，声音明亮，语调上扬，语速稍快。">轻快活泼</button>
+        <button type="button" data-style="像讲故事一样叙述，重要词语适当加重，情绪随情节起伏。">故事旁白</button>
+      </div>
+      <textarea id="style-input" maxlength="200" rows="3" placeholder="例如：像晨间电台主播一样，语气轻快，语速适中。"></textarea>
+      <div class="dialog-actions">
+        <button type="button" data-close>取消</button>
+        <button class="primary" type="submit">确定</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

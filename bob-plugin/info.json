@@ -1,0 +1,100 @@
+{
+  "identifier": "com.joeljhou.mimo-tts",
+  "version": "0.2.1",
+  "category": "tts",
+  "name": "MIMO-TTS",
+  "summary": "小米 MiMo TTS 语音合成",
+  "author": "Joel Jhou",
+  "homepage": "https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5",
+  "minBobVersion": "1.8.0",
+  "options": [
+    {
+      "identifier": "model",
+      "type": "menu",
+      "title": "模型",
+      "defaultValue": "mimo-v2.5-tts",
+      "menuValues": [
+        { "title": "预置音色 · mimo-v2.5-tts", "value": "mimo-v2.5-tts" },
+        { "title": "音色设计 · mimo-v2.5-tts-voicedesign", "value": "mimo-v2.5-tts-voicedesign" },
+        { "title": "音色复刻 · mimo-v2.5-tts-voiceclone", "value": "mimo-v2.5-tts-voiceclone" }
+      ],
+      "desc": "先选模型，再填写对应的音色配置。"
+    },
+    {
+      "identifier": "apiKey",
+      "type": "text",
+      "title": "MIMO_API_KEY",
+      "desc": "所有模型都需要。申请地址：https://platform.xiaomimimo.com/console/api-keys",
+      "textConfig": {
+        "type": "secure",
+        "placeholderText": "粘贴小米 MiMo API Key"
+      }
+    },
+    {
+      "identifier": "voice",
+      "type": "menu",
+      "title": "预置音色（仅预置模型）",
+      "defaultValue": "冰糖",
+      "menuValues": [
+        { "title": "冰糖 · 中文女声", "value": "冰糖" },
+        { "title": "茉莉 · 中文女声", "value": "茉莉" },
+        { "title": "苏打 · 中文男声", "value": "苏打" },
+        { "title": "白桦 · 中文男声", "value": "白桦" },
+        { "title": "Mia · English female", "value": "Mia" },
+        { "title": "Chloe · English female", "value": "Chloe" },
+        { "title": "Milo · English male", "value": "Milo" },
+        { "title": "Dean · English male", "value": "Dean" },
+        { "title": "MiMo 默认音色", "value": "mimo_default" }
+      ],
+      "desc": "仅 mimo-v2.5-tts 使用。"
+    },
+    {
+      "identifier": "stylePreset",
+      "type": "menu",
+      "title": "朗读风格预设（所有模型）",
+      "defaultValue": "natural",
+      "menuValues": [
+        { "title": "自然口语", "value": "natural" },
+        { "title": "温柔舒缓", "value": "soft" },
+        { "title": "新闻播报", "value": "news" },
+        { "title": "轻快活泼", "value": "lively" },
+        { "title": "故事旁白", "value": "story" },
+        { "title": "无风格指令", "value": "none" }
+      ],
+      "desc": "所有模型都支持风格预设。选「无风格指令」时使用模型默认风格。"
+    },
+    {
+      "identifier": "style",
+      "type": "text",
+      "title": "自定义朗读风格（可选）",
+      "desc": "所有模型都可填写。填写后覆盖预设，音色设计会将它附在音色描述后。",
+      "textConfig": {
+        "type": "visible",
+        "height": 50,
+        "placeholderText": "例如：语气温柔，语速稍慢。"
+      }
+    },
+    {
+      "identifier": "voiceDescription",
+      "type": "text",
+      "title": "音色描述（音色设计模型）",
+      "defaultValue": "年轻女声，声线清亮，温柔自然，语速适中。",
+      "desc": "仅 mimo-v2.5-tts-voicedesign 使用，选择该模型时必填。",
+      "textConfig": {
+        "type": "visible",
+        "height": 50,
+        "placeholderText": "例如：深沉醇厚的中年男声，沉稳有磁性。"
+      }
+    },
+    {
+      "identifier": "voiceSample",
+      "type": "text",
+      "title": "高级：音色复刻样本",
+      "desc": "仅 mimo-v2.5-tts-voiceclone 使用，选择该模型时必填。粘贴完整的 WAV 或 MP3 Base64 Data URL，内容上限 10 MB。",
+      "textConfig": {
+        "type": "secure",
+        "placeholderText": "data:audio/wav;base64,..."
+      }
+    }
+  ]
+}
