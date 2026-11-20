@@ -12,35 +12,45 @@
 <body>
   <main class="app">
     <section class="editor" aria-label="语音合成">
-      <header class="editor-heading">
-        <h1 class="brand">MIMO-TTS</h1>
-        <div class="tools">
-          <button id="open-sample-converter" type="button">复刻样本</button>
-          <button id="open-style" type="button">朗读风格</button>
-          <button id="open-settings" type="button">模型配置</button>
+      <button id="open-settings" class="settings-trigger" type="button">模型配置</button>
+      <div class="editor-workspace">
+        <header class="editor-heading">
+          <h1 class="brand">MIMO-TTS</h1>
+        </header>
+        <div class="text-editor">
+          <div class="editor-tools" role="group" aria-label="语音工具">
+            <button id="open-style" type="button" aria-haspopup="dialog" aria-controls="style">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h4m4 0h6M3 10h7m4 0h3M3 15h2m4 0h8"/><circle cx="9" cy="5" r="2"/><circle cx="12" cy="10" r="2"/><circle cx="7" cy="15" r="2"/></svg>
+              朗读风格
+            </button>
+            <button id="open-sample-converter" type="button" aria-haspopup="dialog" aria-controls="sample-converter">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8v4m3-7v10m4-12v14m4-12v10m3-7v4"/></svg>
+              复刻样本
+            </button>
+          </div>
+          <textarea id="text" aria-label="待合成文本" maxlength="100"
+                    spellcheck="false">今天早上天气不错，我出门散步，经过一个小公园。路边有人在遛狗，也有人坐在长椅上晒太阳。我买了一杯咖啡，慢慢走回家。</textarea>
         </div>
-      </header>
-      <textarea id="text" aria-label="待合成文本" maxlength="100" spellcheck="false">我很喜欢小米里的一款音色「MIMO」，说话很温柔，像是我的梦中女友。
-那种感觉很奇妙，就像是一见钟情：第一次听到她的声音时，我就非常想要拥有她。</textarea>
-      <div class="text-meta">
-        <span class="credit">MADE WITH ❤️ BY <a href="https://github.com/joeljhou/MIMO-TTS" target="_blank" rel="noopener noreferrer">JOEL JHOU</a></span>
-        <output id="count" for="text">72/100</output>
+        <div class="text-meta">
+          <span class="credit">MADE WITH ❤️ BY <a href="https://github.com/joeljhou/MIMO-TTS" target="_blank" rel="noopener noreferrer">JOEL JHOU</a></span>
+          <output id="count" for="text">72/100</output>
+        </div>
+        <div class="actions">
+          <button id="open-voices" type="button" aria-controls="voice-panel" aria-expanded="true">
+            <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29"/><circle cx="22" cy="32" r="2.8" fill="currentColor" stroke="none"/><path d="M29 24a11 11 0 0 1 0 16m7-23a21 21 0 0 1 0 30"/></svg>
+            <span>发音人</span>
+          </button>
+          <button id="play" type="button">
+            <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29"/><path id="play-shape" d="m26 22 18 10-18 10z"/></svg>
+            <span>播放</span>
+          </button>
+          <button id="download" type="button">
+            <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29"/><path d="M32 18v27m-13-13 13 13 13-13"/></svg>
+            <span>下载</span>
+          </button>
+        </div>
+        <p id="status" class="status" role="status"></p>
       </div>
-      <div class="actions">
-        <button id="open-voices" type="button" aria-controls="voice-panel" aria-expanded="true">
-          <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29"/><circle cx="22" cy="32" r="2.8" fill="currentColor" stroke="none"/><path d="M29 24a11 11 0 0 1 0 16m7-23a21 21 0 0 1 0 30"/></svg>
-          <span>发音人</span>
-        </button>
-        <button id="play" type="button">
-          <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29"/><path id="play-shape" d="m26 22 18 10-18 10z"/></svg>
-          <span>播放</span>
-        </button>
-        <button id="download" type="button">
-          <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29"/><path d="M32 18v27m-13-13 13 13 13-13"/></svg>
-          <span>下载</span>
-        </button>
-      </div>
-      <p id="status" class="status" role="status"></p>
       <footer class="panel-label" aria-hidden="true">语音合成</footer>
     </section>
     <aside class="voices" id="voice-panel" aria-labelledby="voice-title">

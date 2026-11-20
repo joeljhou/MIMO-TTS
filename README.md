@@ -18,7 +18,7 @@
 | `mimo-v2.5-tts-voicedesign` | 用文字描述年龄、声线或语气，生成定制音色。 |
 | `mimo-v2.5-tts-voiceclone` | 用 MP3 或 WAV 作为参考音频，复刻音色。 |
 
-网页版和 Bob 都支持朗读风格预设和自定义指令。给 Bob 准备复刻样本时，可以用网页顶部的「复刻样本」把音频转成 Base64，在当前浏览器内完成转换。[小米 MiMo 语音合成文档](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)
+网页版和 Bob 都支持朗读风格预设和自定义指令。给 Bob 准备复刻样本时，可以用网页文本框左上角的「复刻样本」把音频转成 Base64，在当前浏览器内完成转换。[小米 MiMo 语音合成文档](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)
 
 ## 本地运行与部署
 

@@ -36,9 +36,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .app:has(.voices[hidden]) { grid-template-columns: minmax(0, 1fr); }
 .app:has(.voices[hidden]) .editor { width: min(800px, 100%); justify-self: center; }
 
-.editor { min-width: 0; display: flex; flex-direction: column; padding: 0 var(--gutter) var(--panel-bottom); }
+.editor { position: relative; min-width: 0; display: flex; flex-direction: column; padding: 0 var(--gutter) var(--panel-bottom); }
+.editor-workspace { display: flex; flex-direction: column; }
 .editor-heading {
-  position: relative;
   display: grid; justify-items: center;
   padding-top: clamp(49px, 9.4dvh, 100px);
   margin-bottom: clamp(20px, min(4.8cqi, 5.4dvh), 58px);
@@ -52,16 +52,37 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   font-size: clamp(24px, min(3.02cqi, 3.36dvh), 36px);
   font-weight: 750; line-height: 1; white-space: nowrap;
 }
-.tools { position: absolute; top: clamp(8px, 1.8dvh, 19px); right: 0; display: flex; gap: 3px; }
-.tools button { min-height: 31px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 13px; }
-.tools button:hover { background: #f2f2f5; color: #161616; }
+.settings-trigger {
+  position: absolute; top: clamp(8px, 1.8dvh, 19px); right: var(--gutter);
+  min-height: 32px; padding: 0 8px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--muted); font-size: 13px;
+}
+.settings-trigger:hover, .editor-tools button:hover { background: var(--surface-subtle); color: #111; }
+.text-editor {
+  --editor-height: clamp(150px, min(30.6dvh, 35cqi), 380px);
+  --editor-border: clamp(3px, .49cqi, 6px);
+  border: var(--editor-border) solid #000; background: var(--surface-subtle);
+}
+.editor-tools {
+  display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
+  padding: 3px 6px; border-bottom: 1px solid var(--line); background: var(--surface);
+}
+.editor-tools button {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 30px; padding: 3px 7px; border: 0; border-radius: 5px;
+  background: transparent; color: var(--muted); font-size: 13px; line-height: 1.3;
+}
+.editor-tools svg {
+  width: 15px; height: 15px; flex-shrink: 0;
+  fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round;
+}
 #text {
-  width: 100%; height: clamp(150px, min(30.6dvh, 35cqi), 380px); min-height: 130px; resize: vertical;
-  padding: 10px 12px;
-  border: clamp(3px, .49cqi, 6px) solid #000; border-radius: 0;
-  background: var(--surface-subtle); color: #111;
+  display: block; width: 100%; height: calc(var(--editor-height) - 2 * var(--editor-border));
+  min-height: calc(130px - 2 * var(--editor-border)); resize: vertical;
+  padding: 10px 12px; border: 0; border-radius: 0; background: transparent; color: #111;
   font-size: clamp(16px, min(1.9cqi, 2.18dvh), 23px); line-height: 1.6;
 }
+#text:focus-visible { outline-offset: -2px; }
 .text-meta {
   display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
   margin-top: clamp(8px, 1.7dvh, 18px); color: var(--muted);
@@ -189,15 +210,38 @@ dialog textarea { resize: vertical; line-height: 1.5; }
   .app { grid-template-columns: minmax(0, 1fr); }
   .app:has(.voices:not([hidden])) .editor { display: none; }
   .voices { border-left: 0; }
-  .editor-heading { padding-top: 53px; }
+  .editor { padding-top: clamp(50px, 7.7dvh, 65px); }
+  .editor-workspace { margin-block: auto; }
+  .editor-heading { padding-top: 0; }
+  .editor .panel-label { margin-top: 0; padding-top: 16px; }
+  .settings-trigger { top: 6px; min-height: 40px; }
   .brand { width: 164px; font-size: 28px; }
-  #text { height: clamp(170px, 36dvh, 302px); }
+  .text-editor { --editor-height: clamp(170px, 36dvh, 302px); }
   .actions { margin-top: clamp(22px, 4.5dvh, 36px); gap: clamp(24px, 8cqi, 44px); }
+  .editor-tools button { min-height: 36px; }
+
+  dialog {
+    width: min(336px, calc(100% - 40px)); max-height: min(80dvh, calc(100dvh - 40px));
+    padding: 14px clamp(12px, 4vw, 16px); overflow-y: auto; overscroll-behavior: contain;
+  }
+  .dialog-heading { gap: 8px; margin-bottom: 10px; }
+  .dialog-heading h2 { font-size: 18px; }
+  .note { margin-bottom: 12px; padding: 7px 9px; font-size: 12px; line-height: 1.45; }
+  dialog label, .key-label a { margin-bottom: 6px; font-size: 13px; }
+  dialog input, dialog textarea, dialog select { padding: 7px 8px; font-size: 16px; }
+  dialog textarea { line-height: 1.4; }
+  .field, #connection-status { margin-top: 10px; }
+  .field-hint { margin-top: 5px; font-size: 12px; }
+  #description-field { margin-bottom: 10px; }
+  .style-presets { gap: 5px; margin-bottom: 7px; }
+  .style-presets button { min-height: 30px; padding: 3px 7px; font-size: 12px; }
+  .dialog-actions { gap: 6px; margin-top: 14px; }
+  .dialog-actions button { min-height: 37px; padding: 5px 7px; font-size: 13px; }
 }
 
 @media (max-height: 620px) {
   .editor-heading { margin-bottom: 15px; }
-  #text { height: clamp(130px, 30dvh, 180px); }
+  .text-editor { --editor-height: clamp(130px, 30dvh, 180px); }
   .actions { margin-top: 16px; }
   .panel-label { padding-top: 12px; }
 }

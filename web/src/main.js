@@ -152,7 +152,7 @@ function showSettings(focus = keyInput) {
   resetConnectionTest()
   updateModelFields()
   settings.showModal()
-  focus.focus()
+  if (!mobile.matches) focus.focus()
 }
 
 function updateModelFields() {
@@ -259,7 +259,7 @@ function showStyle(focus = styleInput) {
   $('description-field').hidden = model !== DESIGN_MODEL
   updateStylePresets()
   styleDialog.showModal()
-  focus.focus()
+  if (!mobile.matches) focus.focus()
 }
 
 function clearAudio() {
