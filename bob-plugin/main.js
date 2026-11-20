@@ -1,5 +1,6 @@
 const MIMO_URL = 'https://api.xiaomimimo.com/v1/chat/completions'
 const API_KEY_URL = 'https://platform.xiaomimimo.com/console/api-keys'
+const SAMPLE_CONVERTER_URL = 'https://mimo-tts.geekyspace.cn/'
 const DEFAULT_MODEL = 'mimo-v2.5-tts'
 const DESIGN_MODEL = 'mimo-v2.5-tts-voicedesign'
 const CLONE_MODEL = 'mimo-v2.5-tts-voiceclone'
@@ -16,14 +17,18 @@ function supportLanguages() {
   return ['zh-Hans', 'zh-Hant', 'en']
 }
 
+function sampleError(message) {
+  return Object.assign(new Error(message), { troubleshootingLink: SAMPLE_CONVERTER_URL })
+}
+
 function normalizeSample(input) {
-  if (!input) throw new Error('请先填写「高级：音色复刻样本」。')
+  if (!input) throw sampleError('请先填写「高级：音色复刻样本」。')
   const sample = /^(data:audio\/(?:wav|mpeg|mp3);base64,)([A-Za-z0-9+/]+={0,2})$/i.exec(input)
   if (!sample || sample[2].length % 4 !== 0) {
-    throw new Error('请粘贴 WAV 或 MP3 的完整 Base64 Data URL 作为音色样本。')
+    throw sampleError('请粘贴 WAV 或 MP3 的完整 Base64 Data URL 作为音色样本。')
   }
   if (sample[2].length > 10000000) {
-    throw new Error('音色样本的 Base64 内容不能超过 10 MB。')
+    throw sampleError('音色样本的 Base64 内容不能超过 10 MB。')
   }
   return sample[1].toLowerCase() + sample[2]
 }
@@ -101,7 +106,9 @@ function synthesize(text, completion) {
   try {
     payload = buildPayload(text)
   } catch (error) {
-    completion({ error: { type: 'param', message: error.message } })
+    const details = { type: 'param', message: error.message }
+    if (error.troubleshootingLink) details.troubleshootingLink = error.troubleshootingLink
+    completion({ error: details })
     return
   }
 

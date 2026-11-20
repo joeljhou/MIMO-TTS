@@ -10,6 +10,7 @@ const DESIGN_MODEL = 'mimo-v2.5-tts-voicedesign'
 const CLONE_MODEL = 'mimo-v2.5-tts-voiceclone'
 const referenceLimitMB = ['localhost', '127.0.0.1'].includes(location.hostname) ? 7.5 : 3.3
 const mobile = matchMedia('(max-width: 640px)')
+const bobSampleLimitMB = 7.5
 const voices = [
   { id: '冰糖', language: '中文', gender: '女性' },
   { id: '茉莉', language: '中文', gender: '女性' },
@@ -19,6 +20,7 @@ const voices = [
   { id: 'Chloe', language: '英文', gender: '女性' },
   { id: 'Milo', language: '英文', gender: '男性' },
   { id: 'Dean', language: '英文', gender: '男性' },
+  { id: 'mimo_default', name: 'MiMo-默认', detail: '因部署集群而异，中国集群默认为冰糖，其他集群默认为 Mia。' },
 ]
 
 const $ = (id) => document.getElementById(id)
@@ -34,6 +36,12 @@ const modelSelect = $('model-select')
 const modelHint = $('model-hint')
 const connectionStatus = $('connection-status')
 const referenceAudio = $('reference-audio')
+const sampleConverter = $('sample-converter')
+const sampleInput = $('sample-file')
+const sampleStatus = $('sample-status')
+const sampleResult = $('sample-result')
+const sampleManual = $('sample-manual')
+const copySample = $('copy-sample')
 const voiceDescription = $('voice-description')
 const voiceButton = $('open-voices')
 const testButton = $('test-connection')
@@ -50,6 +58,7 @@ let voice = voices.some(({ id }) => id === savedVoice) ? savedVoice : voices[0].
 let style = localStorage.getItem(STYLE_KEY) || ''
 let description = localStorage.getItem(DESCRIPTION_KEY) || ''
 let sampleFile = null
+let convertedSample = ''
 let audioUrl = ''
 let pending = null
 let streamPlayback = null
@@ -73,8 +82,8 @@ function updateCount() {
 function drawVoices() {
   const query = search.value.trim().toLowerCase()
   const terms = query.split(/\s+/)
-  const items = voices.filter(({ id, language, gender }) => {
-    const searchable = [id, language, gender].join(' ').toLowerCase()
+  const items = voices.filter(({ id, name, language, gender, detail }) => {
+    const searchable = [id, name, language, gender, detail].join(' ').toLowerCase()
     return terms.every((term) => searchable.includes(term))
   })
   list.replaceChildren()
@@ -85,7 +94,7 @@ function drawVoices() {
     list.append(empty)
     return
   }
-  for (const { id, language, gender } of items) {
+  for (const { id, name = id, language, gender, detail } of items) {
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'voice-card'
@@ -93,17 +102,26 @@ function drawVoices() {
     button.setAttribute('aria-pressed', String(id === voice))
     const label = document.createElement('span')
     label.className = 'voice-name'
-    label.textContent = id
+    label.textContent = name
 
     const metadata = document.createElement('span')
     metadata.className = 'voice-meta'
-    const icon = document.createElement('span')
-    icon.className = 'gender-icon'
-    icon.setAttribute('aria-hidden', 'true')
-    icon.textContent = gender === '男性' ? '♂' : '♀'
-    metadata.append(language + ' · ', icon, gender)
+    if (detail) {
+      button.classList.add('voice-card--default')
+      const identifier = document.createElement('code')
+      identifier.className = 'voice-id'
+      identifier.textContent = id
+      label.append(' ', identifier)
+      metadata.textContent = detail
+    } else {
+      const icon = document.createElement('span')
+      icon.className = 'gender-icon'
+      icon.setAttribute('aria-hidden', 'true')
+      icon.textContent = gender === '男性' ? '♂' : '♀'
+      metadata.append(language + ' · ', icon, gender)
+    }
     button.append(label, metadata)
-    button.setAttribute('aria-label', [id, language, gender].join('，'))
+    button.setAttribute('aria-label', detail ? [name, id, detail].join('，') : [name, language, gender].join('，'))
     list.append(button)
   }
 }
@@ -144,22 +162,35 @@ function updateModelFields() {
   $('reference-hint').textContent = file ? '当前文件：' + file.name : `MP3 或 WAV，最大 ${referenceLimitMB} MB。刷新后需重新选择。`
 }
 
-function referenceMime(file) {
+function referenceMime(file, limitMB = referenceLimitMB) {
   if (!file) throw new Error('请先上传参考音频。')
-  if (!file.size || file.size > referenceLimitMB * 1_000_000) throw new Error(`参考音频必须大于 0，且不超过 ${referenceLimitMB} MB。`)
+  if (!file.size || file.size > limitMB * 1_000_000) throw new Error(`参考音频必须大于 0，且不超过 ${limitMB} MB。`)
   if (/\.wav$/i.test(file.name)) return 'audio/wav'
   if (/\.mp3$/i.test(file.name)) return 'audio/mpeg'
   throw new Error('参考音频只支持 MP3 或 WAV。')
 }
 
-async function readReferenceAudio(file) {
-  const mime = referenceMime(file)
+async function readReferenceAudio(file, limitMB) {
+  const mime = referenceMime(file, limitMB)
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve('data:' + mime + ';base64,' + reader.result.split(',')[1])
     reader.onerror = () => reject(new Error('读取参考音频失败。'))
     reader.readAsDataURL(file)
   })
+}
+
+function setSampleStatus(message, error = false) {
+  sampleStatus.textContent = message
+  sampleStatus.dataset.error = String(error)
+}
+
+function resetSampleResult() {
+  convertedSample = ''
+  sampleResult.value = ''
+  sampleManual.hidden = true
+  copySample.disabled = true
+  setSampleStatus('')
 }
 
 async function postAudio(path, key, payload, signal) {
@@ -361,6 +392,46 @@ text.addEventListener('input', () => {
   clearAudio()
 })
 $('open-settings').addEventListener('click', () => showSettings())
+$('open-sample-converter').addEventListener('click', () => {
+  sampleConverter.showModal()
+  sampleInput.focus()
+})
+sampleInput.addEventListener('change', async () => {
+  resetSampleResult()
+  const file = sampleInput.files[0]
+  if (!file) return
+  setSampleStatus('正在转换…')
+  try {
+    const result = await readReferenceAudio(file, bobSampleLimitMB)
+    if (sampleInput.files[0] !== file || !sampleConverter.open) return
+    convertedSample = result
+    copySample.disabled = false
+    setSampleStatus('转换完成，可以复制。')
+  } catch (error) {
+    if (sampleInput.files[0] === file && sampleConverter.open) {
+      setSampleStatus(error.message, true)
+    }
+  }
+})
+copySample.addEventListener('click', async () => {
+  const result = convertedSample
+  if (!result) return
+  try {
+    await navigator.clipboard.writeText(result)
+    if (result === convertedSample && sampleConverter.open) setSampleStatus('已复制，可以粘贴到 Bob。')
+  } catch {
+    if (result !== convertedSample || !sampleConverter.open) return
+    sampleResult.value = result
+    sampleManual.hidden = false
+    sampleResult.focus()
+    sampleResult.select()
+    setSampleStatus('浏览器未允许自动复制，请手动复制已选中的内容。')
+  }
+})
+sampleConverter.addEventListener('close', () => {
+  sampleInput.value = ''
+  resetSampleResult()
+})
 keyInput.addEventListener('input', resetConnectionTest)
 modelSelect.addEventListener('change', () => {
   resetConnectionTest()

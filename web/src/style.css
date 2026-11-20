@@ -68,7 +68,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   font-size: clamp(11px, min(1.45cqi, 1.65dvh), 17px); line-height: 1.45;
 }
 #count { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.credit strong { color: #3879ff; }
+.credit a { color: #3879ff; font-weight: 700; text-decoration: none; }
+.credit a:hover, .credit a:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
 .actions { display: flex; justify-content: center; align-items: flex-start; gap: clamp(18px, min(4.9cqi, 6dvh), 62px); margin-top: clamp(20px, 5.6dvh, 60px); }
 .actions button {
   display: grid; justify-items: center; gap: 5px; min-width: 54px;
@@ -129,10 +130,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .voice-card:focus-visible { outline-offset: -3px; }
 .voice-card[aria-pressed="true"] { background: var(--accent); color: #fff; }
 .voice-card[aria-pressed="true"]:focus-visible { outline-color: #fff; }
+.voice-card--default { grid-column: 1 / -1; }
 .voice-name { min-width: 0; overflow-wrap: anywhere; }
 .voice-meta { display: flex; align-items: center; gap: 3px; color: var(--muted); font-size: clamp(12px, 1.35dvh, 15px); font-weight: 400; }
+.voice-id { margin-inline-start: 4px; color: var(--muted); font-size: 12px; font-weight: 400; }
 .gender-icon { font-size: 1.15em; line-height: 1; }
-.voice-card[aria-pressed="true"] .voice-meta { color: #eef1ff; }
+.voice-card[aria-pressed="true"] :is(.voice-meta, .voice-id) { color: #eef1ff; }
 .empty { margin: 12px 0; color: var(--muted); grid-column: 1 / -1; font-size: 13px; text-align: center; }
 .voice-actions {
   display: flex; justify-content: center; flex-shrink: 0;

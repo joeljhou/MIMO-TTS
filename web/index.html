@@ -15,6 +15,7 @@
       <header class="editor-heading">
         <h1 class="brand">MIMO-TTS</h1>
         <div class="tools">
+          <button id="open-sample-converter" type="button">复刻样本</button>
           <button id="open-style" type="button">朗读风格</button>
           <button id="open-settings" type="button">模型配置</button>
         </div>
@@ -22,7 +23,7 @@
       <textarea id="text" aria-label="待合成文本" maxlength="100" spellcheck="false">我很喜欢小米里的一款音色「MIMO」，说话很温柔，像是我的梦中女友。
 那种感觉很奇妙，就像是一见钟情：第一次听到她的声音时，我就非常想要拥有她。</textarea>
       <div class="text-meta">
-        <span class="credit">MADE WITH ❤️ BY <strong>JOEL JHOU</strong></span>
+        <span class="credit">MADE WITH ❤️ BY <a href="https://github.com/joeljhou/MIMO-TTS" target="_blank" rel="noopener noreferrer">JOEL JHOU</a></span>
         <output id="count" for="text">72/100</output>
       </div>
       <div class="actions">
@@ -92,6 +93,25 @@
         <button class="primary" type="submit">保存并生效</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="sample-converter" aria-labelledby="sample-title">
+    <div class="dialog-heading">
+      <h2 id="sample-title">复刻样本转换</h2>
+      <button class="close-icon" type="button" data-close aria-label="关闭复刻样本转换"></button>
+    </div>
+    <p class="note">复制转换结果后，粘贴到 Bob 的「高级：音色复刻样本」。文件在当前浏览器内处理。</p>
+    <label for="sample-file">选择 MP3 或 WAV</label>
+    <input id="sample-file" type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" aria-describedby="sample-hint">
+    <p id="sample-hint" class="field-hint">原始文件最大 7.5 MB。</p>
+    <p id="sample-status" class="field-hint" role="status"></p>
+    <div id="sample-manual" class="field" hidden>
+      <label for="sample-result">Base64 Data URL</label>
+      <textarea id="sample-result" rows="3" wrap="off" readonly spellcheck="false"></textarea>
+    </div>
+    <div class="dialog-actions">
+      <button id="copy-sample" type="button" class="primary" disabled>复制 Base64</button>
+    </div>
   </dialog>
 
   <dialog id="style" aria-labelledby="style-title">

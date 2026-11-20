@@ -1,6 +1,6 @@
 # MIMO-TTS Bob 插件
 
-Bob 语音合成插件，直接调用小米 MiMo，无需启动网页或本地服务。当前版本 0.2.1，需要 Bob 1.8.0 或以上版本。
+Bob 语音合成插件，直接调用小米 MiMo，无需启动网页或本地服务。当前版本 0.2.2，需要 Bob 1.8.0 或以上版本。[插件主页](https://github.com/joeljhou/MIMO-TTS)
 
 ## 安装与试听
 
@@ -19,7 +19,9 @@ Bob 语音合成插件，直接调用小米 MiMo，无需启动网页或本地�
 
 自定义朗读风格填了内容后会覆盖预设。「验证」会用所选模型合成一句短语音。使用复刻模型验证时需要先填样本。
 
-复制自己的 WAV 样本 Data URL 到剪贴板（MP3 请将前缀换为 audio/mpeg）：
+在网页顶部点「复刻样本」，选择 MP3 或 WAV，点「复制 Base64」，再粘贴到 Bob 的「高级：音色复刻样本」。[转换工具](https://mimo-tts.geekyspace.cn/)
+
+也可以用终端复制自己的 WAV 样本 Data URL 到剪贴板（MP3 请将前缀换为 audio/mpeg）：
 
     { printf 'data:audio/wav;base64,'; base64 -i "/你的音频路径/sample.wav" | tr -d '\n'; } | pbcopy
 

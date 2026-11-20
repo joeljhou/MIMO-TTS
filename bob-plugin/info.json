@@ -1,11 +1,11 @@
 {
   "identifier": "com.joeljhou.mimo-tts",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "category": "tts",
   "name": "MIMO-TTS",
   "summary": "小米 MiMo TTS 语音合成",
   "author": "Joel Jhou",
-  "homepage": "https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5",
+  "homepage": "https://github.com/joeljhou/MIMO-TTS",
   "minBobVersion": "1.8.0",
   "options": [
     {
@@ -90,7 +90,7 @@
       "identifier": "voiceSample",
       "type": "text",
       "title": "高级：音色复刻样本",
-      "desc": "仅 mimo-v2.5-tts-voiceclone 使用，选择该模型时必填。粘贴完整的 WAV 或 MP3 Base64 Data URL，内容上限 10 MB。",
+      "desc": "仅音色复刻模型使用。打开 https://mimo-tts.geekyspace.cn/ 顶部的「复刻样本」，转换 WAV 或 MP3 后将完整结果粘贴到此处。Base64 内容上限 10 MB。",
       "textConfig": {
         "type": "secure",
         "placeholderText": "data:audio/wav;base64,..."
