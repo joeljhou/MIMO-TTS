@@ -6,6 +6,7 @@ const DESCRIPTION_KEY = 'mimo-tts-description'
 const DEFAULT_MODEL = 'mimo-v2.5-tts'
 const DESIGN_MODEL = 'mimo-v2.5-tts-voicedesign'
 const CLONE_MODEL = 'mimo-v2.5-tts-voiceclone'
+const referenceLimitMB = ['localhost', '127.0.0.1'].includes(location.hostname) ? 7.5 : 3.3
 const mobile = matchMedia('(max-width: 640px)')
 const voices = [
   { id: '冰糖', language: '中文', gender: '女性' },
@@ -49,6 +50,7 @@ let description = localStorage.getItem(DESCRIPTION_KEY) || ''
 let sampleFile = null
 let audioUrl = ''
 let pending = null
+let streamSession = null
 let connectionTest = null
 
 const modelHints = {
@@ -137,12 +139,12 @@ function updateModelFields() {
   modelHint.textContent = modelHints[modelSelect.value]
   $('reference-field').hidden = modelSelect.value !== CLONE_MODEL
   const file = referenceAudio.files[0] || sampleFile
-  $('reference-hint').textContent = file ? '当前文件：' + file.name : 'MP3 或 WAV，最大 7.5 MB。刷新后需重新选择。'
+  $('reference-hint').textContent = file ? '当前文件：' + file.name : `MP3 或 WAV，最大 ${referenceLimitMB} MB。刷新后需重新选择。`
 }
 
 function referenceMime(file) {
   if (!file) throw new Error('请先上传参考音频。')
-  if (!file.size || file.size > 7_500_000) throw new Error('参考音频必须大于 0，且不超过 7.5 MB。')
+  if (!file.size || file.size > referenceLimitMB * 1_000_000) throw new Error(`参考音频必须大于 0，且不超过 ${referenceLimitMB} MB。`)
   if (/\.wav$/i.test(file.name)) return 'audio/wav'
   if (/\.mp3$/i.test(file.name)) return 'audio/mpeg'
   throw new Error('参考音频只支持 MP3 或 WAV。')
@@ -229,6 +231,7 @@ function showStyle(focus = styleInput) {
 
 function clearAudio() {
   pending?.abort()
+  stopStreamPlayback()
   if (audioUrl) {
     player.pause()
     player.removeAttribute('src')
@@ -239,56 +242,187 @@ function clearAudio() {
   setStatus('')
 }
 
-function selectVoice(next) {
-  if (voice === next) return
-  voice = next
-  clearAudio()
+function stopStreamPlayback() {
+  const session = streamSession
+  if (!session) return
+  session.controller.abort()
+  for (const source of session.sources) {
+    try {
+      source.stop()
+    } catch {
+      // The source may have already ended.
+    }
+  }
+  session.context.close()
+  streamSession = null
+  play.querySelector('span').textContent = '播放'
+  play.disabled = false
+  download.disabled = !audioUrl
 }
 
-async function prepareAudio() {
-  if (audioUrl) return audioUrl
-  if (pending) return ''
+function decodePcmChunk(encoded) {
+  const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0))
+  const samples = new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 2))
+  const floats = new Float32Array(samples.length)
+  for (let index = 0; index < samples.length; index += 1) {
+    floats[index] = samples[index] / 32768
+  }
+  return { bytes, floats }
+}
+
+function schedulePcmChunk(session, encoded) {
+  const { bytes, floats } = decodePcmChunk(encoded)
+  session.pcmChunks.push(bytes)
+  const buffer = session.context.createBuffer(1, floats.length, 24000)
+  buffer.copyToChannel(floats, 0)
+  const source = session.context.createBufferSource()
+  source.buffer = buffer
+  source.connect(session.context.destination)
+  const startAt = Math.max(session.nextTime, session.context.currentTime + 0.03)
+  source.start(startAt)
+  session.nextTime = startAt + buffer.duration
+  session.sources.push(source)
+  session.activeSources += 1
+  source.addEventListener('ended', () => {
+    session.activeSources -= 1
+    if (session.finished && session.activeSources === 0) {
+      session.context.close()
+    }
+  })
+  if (!session.started) {
+    session.started = true
+    setStatus('正在播放…')
+  }
+}
+
+function pcmToWav(chunks) {
+  const length = chunks.reduce((total, chunk) => total + chunk.byteLength, 0)
+  const wav = new ArrayBuffer(44 + length)
+  const view = new DataView(wav)
+  const write = (offset, value) => [...value].forEach((character, index) => view.setUint8(offset + index, character.charCodeAt(0)))
+  write(0, 'RIFF')
+  view.setUint32(4, 36 + length, true)
+  write(8, 'WAVE')
+  write(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, 24000, true)
+  view.setUint32(28, 48000, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  write(36, 'data')
+  view.setUint32(40, length, true)
+  let offset = 44
+  for (const chunk of chunks) {
+    new Uint8Array(wav, offset, chunk.byteLength).set(chunk)
+    offset += chunk.byteLength
+  }
+  return new Blob([wav], { type: 'audio/wav' })
+}
+
+async function startStreamAudio() {
   const content = text.value.trim()
   if (!content) {
     setStatus('请输入要合成的文本。', true)
     text.focus()
-    return ''
+    return
   }
   if (!apiKey) {
     showSettings()
-    return ''
+    return
   }
   if (model === DESIGN_MODEL && !description) {
     showStyle(voiceDescription)
-    return ''
+    return
   }
   if (model === CLONE_MODEL && !sampleFile) {
     showSettings(referenceAudio)
-    return ''
+    return
   }
 
   const request = new AbortController()
+  const session = {
+    controller: request,
+    context: new AudioContext(),
+    nextTime: 0,
+    sources: [],
+    pcmChunks: [],
+    activeSources: 0,
+    started: false,
+    finished: false,
+  }
+  streamSession = session
   pending = request
-  play.disabled = download.disabled = true
-  setStatus('正在合成语音…')
+  play.disabled = false
+  download.disabled = true
+  play.querySelector('span').textContent = '停止'
+  setStatus('正在连接 MiMo…')
 
   try {
+    await session.context.resume()
     const payload = { text: content, style, voice, model, description }
     if (model === CLONE_MODEL) payload.reference = await readReferenceAudio(sampleFile)
-    const response = await postAudio('/api/tts', apiKey, payload, request.signal)
-    const wav = await response.blob()
-    if (request.signal.aborted) return ''
+    const response = await fetch('/api/tts/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'api-key': apiKey },
+      body: JSON.stringify(payload),
+      signal: request.signal,
+    })
+    if (!response.ok) {
+      const { error } = await response.json().catch(() => ({}))
+      throw new Error(error || '请求失败（HTTP ' + response.status + '）。')
+    }
+    if (!response.body) throw new Error('浏览器不支持流式响应。')
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let pendingText = ''
+    let done = false
+    while (!done) {
+      const result = await reader.read()
+      if (result.done) break
+      pendingText += decoder.decode(result.value, { stream: true })
+      const lines = pendingText.split('\n')
+      pendingText = lines.pop()
+      for (const line of lines) {
+        if (!line.trim()) continue
+        const chunk = JSON.parse(line)
+        if (chunk.error) throw new Error(chunk.error)
+        if (chunk.data) schedulePcmChunk(session, chunk.data)
+        if (chunk.done) done = true
+      }
+    }
+    if (pendingText.trim()) {
+      const chunk = JSON.parse(pendingText)
+      if (chunk.data) schedulePcmChunk(session, chunk.data)
+    }
+    if (request.signal.aborted) return
+    if (!session.pcmChunks.length) throw new Error('小米 MiMo 没有返回音频数据。')
+    session.finished = true
+    const wav = pcmToWav(session.pcmChunks)
+    if (audioUrl) URL.revokeObjectURL(audioUrl)
     audioUrl = URL.createObjectURL(wav)
     player.src = audioUrl
-    setStatus('')
-    return audioUrl
+    download.disabled = false
+    setStatus('音频已生成，可下载或再次播放。')
+    if (session.activeSources === 0) session.context.close()
   } catch (error) {
-    if (!request.signal.aborted) setStatus(error.message, true)
-    return ''
+    if (!request.signal.aborted) setStatus('生成失败：' + error.message, true)
+    if (!request.signal.aborted) stopStreamPlayback()
   } finally {
-    pending = null
-    play.disabled = download.disabled = false
+    if (pending === request) pending = null
+    if (streamSession === session) streamSession = null
+    play.querySelector('span').textContent = '播放'
+    play.disabled = false
+    download.disabled = !audioUrl
   }
+}
+
+function selectVoice(next) {
+  if (voice === next) return
+  voice = next
+  clearAudio()
 }
 
 function syncPlayer() {
@@ -408,23 +542,37 @@ document.querySelectorAll('[data-close]').forEach((button) => {
 
 for (const event of ['play', 'pause', 'ended', 'emptied']) player.addEventListener(event, syncPlayer)
 play.addEventListener('click', async () => {
+  if (streamSession) {
+    stopStreamPlayback()
+    return
+  }
   if (!player.paused) {
     player.pause()
     return
   }
-  if (!await prepareAudio()) return
-  try {
-    await player.play()
-    setStatus('')
-  } catch {
-    setStatus('音频已生成，请再点一次播放，或下载 WAV。', true)
+  if (audioUrl) {
+    try {
+      await player.play()
+      setStatus('')
+    } catch {
+      setStatus('音频已生成，请再点一次播放，或下载 WAV。', true)
+    }
+    return
   }
+  startStreamAudio()
 })
 download.addEventListener('click', async () => {
-  const url = await prepareAudio()
-  if (!url) return
+  if (streamSession) {
+    setStatus('音频生成完成后即可下载。')
+    return
+  }
+  if (!audioUrl) {
+    startStreamAudio()
+    setStatus('音频生成完成后再次点击下载。')
+    return
+  }
   const link = document.createElement('a')
-  link.href = url
+  link.href = audioUrl
   const name = model === DEFAULT_MODEL ? 'mimo-tts-' + voice : model
   link.download = name + '.wav'
   document.body.append(link)

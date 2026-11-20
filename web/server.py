@@ -61,7 +61,7 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("请求内容过大或为空。")
         return json.loads(self.rfile.read(length))
 
-    def build_payload(self, fields, test=False):
+    def build_payload(self, fields, test=False, stream=False):
         model = fields.get("model", DEFAULT_MODEL)
         text = "你好，这是一次语音连接测试。" if test else fields["text"].strip()
         style = fields.get("style", "").strip()
@@ -72,7 +72,7 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("请检查模型及文本长度。")
 
         instruction = style
-        audio = {"format": "wav"}
+        audio = {"format": "pcm16" if stream else "wav"}
         if model == DESIGN_MODEL:
             if not description and not test:
                 raise ValueError("请先填写音色描述。")
@@ -97,7 +97,7 @@ class Handler(BaseHTTPRequestHandler):
         messages = [{"role": "assistant", "content": text}]
         if instruction:
             messages.insert(0, {"role": "user", "content": instruction})
-        return {"model": model, "messages": messages, "audio": audio, "stream": False}
+        return {"model": model, "messages": messages, "audio": audio, "stream": stream}
 
     def call_mimo(self, key, payload):
         request = Request(
@@ -113,8 +113,46 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError
         return audio
 
+    def stream_mimo(self, key, payload):
+        request = Request(
+            MIMO_URL,
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json", "api-key": key, "Accept": "text/event-stream"},
+            method="POST",
+        )
+        with opener.open(request, timeout=60) as response:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-transform")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            try:
+                while True:
+                    line = response.readline()
+                    if not line:
+                        break
+                    if not line.startswith(b"data:"):
+                        continue
+                    value = line[5:].strip()
+                    if value == b"[DONE]":
+                        self.wfile.write(b'{"done":true}\n')
+                        self.wfile.flush()
+                        break
+                    try:
+                        chunk = json.loads(value)
+                        audio = chunk.get("choices", [{}])[0].get("delta", {}).get("audio")
+                        encoded = audio.get("data") if audio else None
+                        if encoded:
+                            message = json.dumps({"data": encoded, "done": False}, ensure_ascii=False).encode()
+                            self.wfile.write(message + b"\n")
+                            self.wfile.flush()
+                    except (json.JSONDecodeError, AttributeError, IndexError, TypeError):
+                        continue
+            except (BrokenPipeError, ConnectionResetError):
+                return
+
     def do_POST(self):
-        if self.path not in {"/api/tts", "/api/test"}:
+        if self.path not in {"/api/tts", "/api/tts/stream", "/api/test"}:
             self.error(404, "接口不存在。")
             return
 
@@ -132,13 +170,34 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             fields = self.read_fields()
-            payload = self.build_payload(fields, test=self.path == "/api/test")
+            payload = self.build_payload(
+                fields,
+                test=self.path == "/api/test",
+                stream=self.path == "/api/tts/stream",
+            )
         except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
             self.error(400, "请检查文本、模型、朗读风格、音色或参考音频。")
             return
         except ValueError as error:
             self.error(400, str(error))
             return
+        if self.path == "/api/tts/stream":
+            try:
+                self.stream_mimo(key, payload)
+            except HTTPError as error:
+                messages = {
+                    401: "小米 MiMo 拒绝了 API Key，请检查模型配置。",
+                    403: "当前 API Key 无权调用小米 MiMo TTS。",
+                    429: "小米 MiMo 请求过于频繁，请稍后再试。",
+                }
+                self.error(error.code if 400 <= error.code <= 599 else 502,
+                           messages.get(error.code, f"小米 MiMo 返回 HTTP {error.code}。"))
+            except (TimeoutError, socket.timeout):
+                self.error(504, "小米 MiMo 请求超时，请重试。")
+            except (URLError, OSError):
+                self.error(502, "无法连接小米 MiMo，请检查网络或代理。")
+            return
+
         try:
             audio = self.call_mimo(key, payload)
         except HTTPError as error:

@@ -1,6 +1,6 @@
-import { handleTts } from './_mimo.js'
+import { handleTts } from '../../lib/mimo.js'
 
 export default function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: '只支持 POST。' })
-  return handleTts(req, res, true)
+  return handleTts(req, res, false, true)
 }
