@@ -1,9 +1,19 @@
+const { HmacSHA256 } = require('crypto-js')
+
 const MIMO_URL = 'https://api.xiaomimimo.com/v1/chat/completions'
 const API_KEY_URL = 'https://platform.xiaomimimo.com/console/api-keys'
 const SAMPLE_CONVERTER_URL = 'https://mimo-tts.geekyspace.cn/'
 const DEFAULT_MODEL = 'mimo-v2.5-tts'
 const DESIGN_MODEL = 'mimo-v2.5-tts-voicedesign'
 const CLONE_MODEL = 'mimo-v2.5-tts-voiceclone'
+const CACHE_TTL_SECONDS = 600
+const CACHE_MAX_ENTRIES = 10
+const CACHE_MAX_TOTAL_SIZE = 8 * 1024 * 1024
+const CACHE_MAX_ITEM_SIZE = 2 * 1024 * 1024
+const audioCache = new Map()
+const inFlight = new Map()
+let cacheSize = 0
+
 const STYLES = {
   natural: '用自然的口语表达，咬字清楚，语速适中。',
   soft: '语气温柔，音量轻一些，语速放慢，句间稍作停顿。',
@@ -89,17 +99,98 @@ function responseError(response) {
   return null
 }
 
-function synthesize(text, completion) {
-  const apiKey = ($option.apiKey || '').trim()
-  if (!apiKey) {
-    completion({
-      error: { type: 'secretKey', message: '请先填写 MIMO_API_KEY。', troubleshootingLink: API_KEY_URL },
-    })
+function removeCachedAudio(key) {
+  const entry = audioCache.get(key)
+  audioCache.delete(key)
+  cacheSize -= entry.value.length
+  $timer.invalidate(entry.timer)
+}
+
+function getCachedAudio(key) {
+  const entry = audioCache.get(key)
+  if (!entry) return
+  if (Date.now() >= entry.expiresAt) {
+    removeCachedAudio(key)
     return
   }
+  audioCache.delete(key)
+  audioCache.set(key, entry)
+  return entry.value
+}
+
+function hasCompleteWav(value) {
+  if (value.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0
+  const bytes = value.length / 4 * 3 - padding
+  if (bytes <= 44) return false
+
+  // The little-endian RIFF size excludes the first eight bytes of the file.
+  const hex = $data.fromBase64(value.slice(0, 16)).toHex()
+  const size = parseInt(hex.slice(14, 16) + hex.slice(12, 14) + hex.slice(10, 12) + hex.slice(8, 10), 16)
+  return size + 8 === bytes
+}
+
+function cacheAudio(key, value) {
+  if (value.length > CACHE_MAX_ITEM_SIZE || !hasCompleteWav(value)) return
+  while (audioCache.size >= CACHE_MAX_ENTRIES || cacheSize + value.length > CACHE_MAX_TOTAL_SIZE) {
+    removeCachedAudio(audioCache.keys().next().value)
+  }
+
+  const entry = { value, expiresAt: Date.now() + CACHE_TTL_SECONDS * 1000 }
+  entry.timer = $timer.schedule({
+    interval: CACHE_TTL_SECONDS,
+    repeats: false,
+    handler() {
+      if (audioCache.get(key) !== entry) return
+      audioCache.delete(key)
+      cacheSize -= entry.value.length
+    },
+  })
+  audioCache.set(key, entry)
+  cacheSize += value.length
+}
+
+function requestAudio(apiKey, payload) {
+  return new Promise((resolve) => {
+    $http.request({
+      method: 'POST',
+      url: MIMO_URL,
+      header: { 'Content-Type': 'application/json', 'api-key': apiKey },
+      timeout: 55,
+      body: payload,
+      handler(response) {
+        const error = responseError(response)
+        if (error) {
+          resolve({ error })
+          return
+        }
+
+        let value
+        try {
+          const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data
+          value = data.choices[0].message.audio.data
+          const header = typeof value === 'string' && $data.fromBase64(value.slice(0, 16))
+          if (!header || !/^52494646[0-9a-f]{8}57415645$/i.test(header.toHex())) value = null
+        } catch {
+          value = null
+        }
+
+        if (value) resolve({ result: { type: 'base64', value } })
+        else resolve({ error: { type: 'api', message: '小米 MiMo 没有返回有效的 WAV 音频。' } })
+      },
+    })
+  }).catch(() => ({ error: { type: 'network', message: '无法连接小米 MiMo，请检查网络后重试。' } }))
+}
+
+async function synthesize(text, useCache) {
+  const apiKey = ($option.apiKey || '').trim()
+  if (!apiKey) {
+    return {
+      error: { type: 'secretKey', message: '请先填写 MIMO_API_KEY。', troubleshootingLink: API_KEY_URL },
+    }
+  }
   if (!text) {
-    completion({ error: { type: 'param', message: '请输入要合成的文本。' } })
-    return
+    return { error: { type: 'param', message: '请输入要合成的文本。' } }
   }
 
   let payload
@@ -108,49 +199,35 @@ function synthesize(text, completion) {
   } catch (error) {
     const details = { type: 'param', message: error.message }
     if (error.troubleshootingLink) details.troubleshootingLink = error.troubleshootingLink
-    completion({ error: details })
-    return
+    return { error: details }
   }
 
-  $http.request({
-    method: 'POST',
-    url: MIMO_URL,
-    header: { 'Content-Type': 'application/json', 'api-key': apiKey },
-    timeout: 55,
-    body: payload,
-    handler(response) {
-      const error = responseError(response)
-      if (error) {
-        completion({ error })
-        return
-      }
+  if (!useCache) return requestAudio(apiKey, payload)
 
-      let value
-      try {
-        const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data
-        value = data.choices[0].message.audio.data
-        // The first 12 decoded bytes contain the RIFF and WAVE signatures.
-        const header = typeof value === 'string' && $data.fromBase64(value.slice(0, 16))
-        if (!header || !/^52494646[0-9a-f]{8}57415645$/i.test(header.toHex())) value = null
-      } catch {
-        value = null
-      }
+  const key = HmacSHA256(JSON.stringify(payload), apiKey).toString()
+  const cached = getCachedAudio(key)
+  if (cached) return { result: { type: 'base64', value: cached } }
+  if (inFlight.has(key)) return inFlight.get(key)
 
-      if (value) completion({ result: { type: 'base64', value } })
-      else completion({ error: { type: 'api', message: '小米 MiMo 没有返回有效的 WAV 音频。' } })
-    },
+  const request = requestAudio(apiKey, payload).then((response) => {
+    if (response.result) cacheAudio(key, response.result.value)
+    return response
+  }).finally(() => {
+    inFlight.delete(key)
   })
+  inFlight.set(key, request)
+  return request
 }
 
 function tts(query, completion) {
   const text = query && typeof query.text === 'string' ? query.text.trim() : ''
-  synthesize(text, completion)
+  synthesize(text, true).then(completion)
 }
 
 function pluginValidate(completion) {
   const englishVoice = ($option.model || DEFAULT_MODEL) === DEFAULT_MODEL && ['Mia', 'Chloe', 'Milo', 'Dean'].includes($option.voice)
   const text = englishVoice ? 'Hello. This is a speech synthesis test.' : '你好，这是一段语音合成测试。'
-  synthesize(text, ({ error }) => {
+  synthesize(text, false).then(({ error }) => {
     completion(error ? { result: false, error } : { result: true })
   })
 }
