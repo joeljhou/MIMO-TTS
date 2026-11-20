@@ -8,7 +8,16 @@ const DESCRIPTION_KEY = 'mimo-tts-description'
 const DEFAULT_MODEL = 'mimo-v2.5-tts'
 const DESIGN_MODEL = 'mimo-v2.5-tts-voicedesign'
 const CLONE_MODEL = 'mimo-v2.5-tts-voiceclone'
-const referenceLimitMB = ['localhost', '127.0.0.1'].includes(location.hostname) ? 7.5 : 3.3
+function isLocalDeployment(name) {
+  if (['localhost', '127.0.0.1', '[::1]'].includes(name)) return true
+  const parts = name.split('.').map(Number)
+  return parts.length === 4 && parts.every(n => Number.isInteger(n) && n >= 0 && n <= 255) && (
+    parts[0] === 10 ||
+    (parts[0] === 192 && parts[1] === 168) ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
+  )
+}
+const referenceLimitMB = isLocalDeployment(location.hostname) ? 7.5 : 3.3
 const mobile = matchMedia('(max-width: 640px)')
 const bobSampleLimitMB = 7.5
 const voices = [

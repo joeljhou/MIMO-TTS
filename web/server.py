@@ -33,6 +33,30 @@ class NoRedirect(HTTPRedirectHandler):
 opener = build_opener(NoRedirect)
 
 
+def lan_hosts(port):
+    """收集本机的局域网地址，开放局域网访问时用于校验 Host，防止 DNS 重绑定。"""
+    hosts = set()
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.connect(("8.8.8.8", 80))  # 只取出口地址，不发送数据包。
+            hosts.add(f"{sock.getsockname()[0]}:{port}")
+        finally:
+            sock.close()
+    except OSError:
+        pass
+    try:
+        hostname = socket.gethostname()
+        hosts.add(f"{hostname}:{port}")
+        if not hostname.endswith(".local"):
+            hosts.add(f"{hostname}.local:{port}")
+        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            hosts.add(f"{info[4][0]}:{port}")
+    except OSError:
+        pass
+    return hosts
+
+
 def sse_data(response):
     data = []
     for raw in response:
@@ -179,11 +203,9 @@ class Handler(BaseHTTPRequestHandler):
             self.error(404, "接口不存在。")
             return
 
-        port = self.server.server_port
-        allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
         host = self.headers.get("Host")
         origin = self.headers.get("Origin")
-        if host not in allowed_hosts or (origin and origin != f"http://{host}"):
+        if host not in self.server.allowed_hosts or (origin and origin != f"http://{host}"):
             self.error(403, "请从本地页面调用此接口。")
             return
 
@@ -240,6 +262,14 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("TTS_PORT", "8765"))
-    with ThreadingHTTPServer(("127.0.0.1", port), Handler) as server:
-        print(f"MIMO-TTS 已启动：http://127.0.0.1:{server.server_port}", flush=True)
+    host = os.environ.get("TTS_HOST", "127.0.0.1")
+    allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+    urls = [f"http://127.0.0.1:{port}"]
+    if host not in {"127.0.0.1", "localhost"}:
+        addresses = lan_hosts(port)
+        allowed_hosts |= addresses
+        urls += [f"http://{name}" for name in sorted(addresses)]
+    with ThreadingHTTPServer((host, port), Handler) as server:
+        server.allowed_hosts = allowed_hosts
+        print("MIMO-TTS 已启动：" + "、".join(urls), flush=True)
         server.serve_forever()

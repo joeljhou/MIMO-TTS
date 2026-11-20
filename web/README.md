@@ -27,6 +27,14 @@ API Key 保存在当前站点的浏览器 localStorage，可以在「模型配�
 HTTPS_PROXY=http://127.0.0.1:7890 python3 server.py
 ```
 
+默认只监听本机（127.0.0.1）。要让手机等同局域网设备访问，用 `TTS_HOST` 监听全部网卡，启动日志会列出所有可访问地址，其他设备用其中任意一个打开即可（端口可用 `TTS_PORT` 修改）。
+
+```bash
+TTS_HOST=0.0.0.0 python3 server.py
+```
+
+首次以这种方式启动时，macOS 可能弹窗询问是否允许 Python 接收传入网络连接，选择「允许」即可。接口仍会校验 Host 与 Origin，只接受指向本机地址、来自本服务页面的请求；同一网络下的其他人也能打开页面并使用自己的 API Key，请仅在可信网络中开放。
+
 ## Vercel
 
 在 Vercel 导入仓库，将 Root Directory 设为 `web`。构建脚本将网页文件复制到 `dist/`，`api/` 下的 Node.js 函数提供流式播放、完整 WAV 合成和连接测试。本地预览使用 `server.py` 提供同样的接口。访问者在网页内填写自己的 MiMo API Key。

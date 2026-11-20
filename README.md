@@ -25,7 +25,7 @@
 - `web/` 包含网页版、Vercel API 函数和本地 Python 服务。Vercel 的根目录设为 `web`。[启动与部署说明](web/README.md)
 - `bob-plugin/` 包含 Bob 插件源码和 `.bobplugin` 安装包。[插件说明](bob-plugin/README.md)
 
-在仓库根目录运行以下命令，然后打开 [本地网页](http://127.0.0.1:8765/)。
+在仓库根目录运行以下命令，然后打开 [本地网页](http://127.0.0.1:8765/)。要让手机等同局域网设备访问，改用 `TTS_HOST=0.0.0.0 python3 server.py` 启动，再用本机局域网 IP（如 `http://192.168.2.3:8765/`）打开。
 
 ```bash
 cd web
