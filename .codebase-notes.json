@@ -1,0 +1,10 @@
+{
+  "version": 3,
+  "notes": {
+    "bob-plugin": { "_text": "插件", "_meta": { "style": "extension" } },
+    "web": {
+      "_text": "web服务", "_meta": { "style": "focus" },
+      "server.py": { "_text": "python服务", "_meta": { "style": "important" } }
+    }
+  }
+}
