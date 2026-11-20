@@ -1,11 +1,20 @@
 const SAMPLE_RATE = 24_000
+const START_BUFFER_FRAMES = SAMPLE_RATE
+const STREAM_RATE_MARGIN = 1.15
+const START_LEAD_FRAMES = 720
+const MIN_LEAD_FRAMES = 256
 
 export class PcmPlayback {
   constructor(onEnd) {
-    this.context = new AudioContext()
+    // Match the PCM so the output device resamples the mixed stream, not each chunk.
+    this.context = new AudioContext({ sampleRate: SAMPLE_RATE })
     this.onEnd = onEnd
     this.sources = new Set()
-    this.nextStart = 0
+    this.buffered = []
+    this.bufferedFrames = 0
+    this.firstChunkTime = null
+    this.nextFrame = null
+    this.waitForFinish = this.context.sampleRate !== SAMPLE_RATE
     this.paused = false
     this.finished = false
   }
@@ -20,15 +29,42 @@ export class PcmPlayback {
   }
 
   append(bytes) {
-    const samples = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-    const buffer = this.context.createBuffer(1, bytes.byteLength / 2, SAMPLE_RATE)
-    const channel = buffer.getChannelData(0)
-    for (let index = 0; index < channel.length; index++) {
-      channel[index] = samples.getInt16(index * 2, true) / 32768
-    }
+    const time = performance.now()
+    this.firstChunkTime ??= time
+    // Estimate the arrival rate before counting the chunk that just arrived.
+    const expectedFrames = (time - this.firstChunkTime) / 1000 * SAMPLE_RATE * STREAM_RATE_MARGIN
+    const canStream = this.bufferedFrames >= expectedFrames
+    this.buffered.push(bytes)
+    this.bufferedFrames += bytes.byteLength / 2
 
-    const now = this.context.currentTime
-    const start = this.nextStart > now ? this.nextStart : now + 0.03
+    if (this.waitForFinish) return false
+    if (this.nextFrame === null) {
+      if (this.bufferedFrames < START_BUFFER_FRAMES || !canStream) return false
+    } else if (this.nextFrame - this.context.currentTime * SAMPLE_RATE < MIN_LEAD_FRAMES) {
+      // Once playback catches up to the stream, wait for the remaining audio.
+      this.waitForFinish = true
+      this.nextFrame = null
+      return false
+    }
+    this.scheduleBuffered()
+    return true
+  }
+
+  scheduleBuffered() {
+    if (!this.bufferedFrames) return
+    const buffer = this.context.createBuffer(1, this.bufferedFrames, SAMPLE_RATE)
+    const channel = buffer.getChannelData(0)
+    let offset = 0
+    for (const bytes of this.buffered) {
+      const samples = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+      for (let index = 0; index < bytes.byteLength; index += 2) {
+        channel[offset++] = samples.getInt16(index, true) / 32768
+      }
+    }
+    this.buffered = []
+    this.bufferedFrames = 0
+
+    const startFrame = this.nextFrame ?? Math.ceil(this.context.currentTime * SAMPLE_RATE) + START_LEAD_FRAMES
     const source = this.context.createBufferSource()
     source.buffer = buffer
     source.connect(this.context.destination)
@@ -38,12 +74,13 @@ export class PcmPlayback {
       source.disconnect()
       this.finishIfDrained()
     }
-    source.start(start)
-    this.nextStart = start + buffer.duration
+    source.start(startFrame / SAMPLE_RATE)
+    this.nextFrame = startFrame + buffer.length
   }
 
   finish() {
     this.finished = true
+    this.scheduleBuffered()
     this.finishIfDrained()
   }
 
@@ -60,6 +97,8 @@ export class PcmPlayback {
       source.disconnect()
     }
     this.sources.clear()
+    this.buffered = []
+    this.bufferedFrames = 0
     if (this.context.state !== 'closed') void this.context.close().catch(() => {})
   }
 }

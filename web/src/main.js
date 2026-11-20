@@ -330,8 +330,7 @@ async function prepareAudio(useStream) {
     const response = await postAudio(useStream ? '/api/tts/stream' : '/api/tts', apiKey, payload, request.signal)
     const wav = useStream
       ? await readPcmWav(response.body, request.signal, (bytes) => {
-        playback.append(bytes)
-        setStatus('')
+        setStatus(playback.append(bytes) ? '' : '正在缓冲语音…')
       })
       : await response.blob()
     request.signal.throwIfAborted()
